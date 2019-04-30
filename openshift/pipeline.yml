@@ -1,0 +1,94 @@
+apiVersion: v1
+kind: BuildConfig
+metadata:
+  annotations:
+  creationTimestamp: null
+  labels:
+    app: pipeline
+    name: pipeline
+  name: pipeline
+spec:
+  output: {}
+  postCommit: {}
+  resources: {}
+  runPolicy: Serial
+  source:
+    secrets: null
+    type: None
+  strategy:
+    jenkinsPipelineStrategy:
+      jenkinsfile: |-
+        node ('') {
+            stage ('build & deploy in dev') {
+                openshiftBuild(namespace: 'development', 
+                    buildConfig: 'cookit',
+                    showBuildLogs: 'true',
+                    waitTime: '1200000')
+            }
+            stage ('verify deploy in dev') {
+                openshiftVerifyDeployment(namespace: 'development',
+                    depCfg: 'cookit',
+                    replicaCount:'1',
+                    verifyReplicaCount: 'true',
+                    waitTime: '300000')
+            }
+            stage ('ask for testing deployment') {
+                timeout(time: 6, unit: 'HOURS') {
+                    input message: 'Ready for testing deployment?',
+                        id: 'approval'
+                }
+            }
+            stage ('deploy in test') {
+                openshiftTag(namespace: 'development',
+                    sourceStream: 'cookit',
+                    sourceTag: 'latest',
+                    destinationStream: 'cookit',
+                    destinationTag: 'promoteQA')
+        
+                openshiftDeploy(namespace: 'testing',
+                    deploymentConfig: 'cookit',
+                    waitTime: '300000')
+            }
+            stage ('verify deploy in test') {
+                openshiftVerifyDeployment(namespace: 'testing',
+                    depCfg: 'cookit',
+                    replicaCount:'1',
+                    verifyReplicaCount: 'true',
+                    waitTime: '300000')
+            }
+            stage ('ask for production deployment') {
+                timeout(time: 2, unit: 'DAYS') {
+                    input message: 'Ready for production deployment?',
+                        id: 'approval'
+                }
+            }
+            stage ('deploy in production') {
+                openshiftTag(namespace: 'development',
+                    sourceStream: 'cookit',
+                    sourceTag: 'latest',
+                    destinationStream: 'cookit',
+                    destinationTag: 'promotePROD')
+        
+                openshiftDeploy(namespace: 'production',
+                    deploymentConfig: 'cookit',
+                    waitTime: '300000')
+            }
+            stage ('verify deploy in production') {
+                openshiftVerifyDeployment(namespace: 'production',
+                    depCfg: 'cookit',
+                    replicaCount:'1',
+                    verifyReplicaCount: 'true',
+                    waitTime: '300000')
+            }    
+        }
+    type: JenkinsPipeline
+  triggers:
+  - github:
+      secret: eEDekNRGmS4tjjYtZpjy
+    type: GitHub
+  - generic:
+      secret: eEDekNRGmS4tjjYtZpjy 
+    type: Generic
+status:
+  lastVersion: 0
+
